@@ -39,24 +39,41 @@ void setup() {
       return;
     }
 
-    if (doc["destination"] == GATEWAY_FULL_NAME) {
+    String destination =
+        doc["destination"]; // Destinasi akhir data yang diterima,dan akan
+                            // menjadi sumber data (source) ketika response
+                            // balik diberikan
+    String source =
+        doc["source"]; // Sumber pengirim data, dan akan menjadi destinasi akhir
+                       // ketika response balik diberikan
+    String type = doc["type"];
+
+    if (destination == GATEWAY_FULL_NAME) {
       isResponseDestinationCorrect = true;
     }
 
     // Jika tipe response yang diterima adalah "auth"
-    if (isResponseDestinationCorrect && doc["type"] == "auth") {
-      Serial.printf("[i]: Receiving Auth Request From Node: %s. %s\n",
-                    from.c_str(), msg.c_str());
+    if (isResponseDestinationCorrect && type == "auth") {
+      Serial.printf("__REQUEST_FOR_AUTH: %s. %s\n", from.c_str(), msg.c_str());
     }
 
     // Jika response yang diterima adalah "connectionstartup"
-    if (isResponseDestinationCorrect && doc["type"] == "connectionstartup") {
+    if (isResponseDestinationCorrect && type == "connectionstartup") {
       Serial.println("Sending Response For Connection Start Up");
-      String destination = doc["source"];
-      String msg = "{\"type\":\"connectionstartup\", \"source\":\"" +
-                   GATEWAY_FULL_NAME + "\", \"destination\" : \"" +
-                   destination + "\", \"success\":true}";
-      mesh.sendSingle(destination, msg);
+      String payload = "{\"type\":\"connectionstartup\", \"source\":\"" +
+                       GATEWAY_FULL_NAME + "\", \"destination\" : \"" + source +
+                       "\", \"success\":true}";
+      mesh.sendSingle(source, payload);
+    }
+
+    // Jika response yang diterima adalah "connectionping"
+    if (isResponseDestinationCorrect && type == "connectionping") {
+      Serial.println("Sending Response For Connection Ping");
+      String payload = "{\"type\":\"connectionping\", \"source\":\"" +
+                       GATEWAY_FULL_NAME + "\", \"destination\" : \"" + source +
+                       "\", \"success\":true}";
+      mesh.sendSingle(source, payload);
+      Serial.printf("__CONNECTION_PING: %s. %s\n", from.c_str(), msg.c_str());
     }
   });
 
