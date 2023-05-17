@@ -10,8 +10,14 @@
 
 unsigned long messageTimestamp = 0;
 unsigned long requestCredentialTimestamp = 0;
+unsigned long authCheckTime = 0;
+unsigned long authRTOTime = 0;
 const int requestCredentialTimeInterval = 5000;
-
+const int RTO_LIMIT = 8000;
+const long AUTH_INTERVAL = 30000; // 30s
+const short LED_AUTH = 15;
+const short LED_TX = 16;
+const short LED_RX = 17;
 // File paths to save input values permanentlys
 const char *ssidPath = "/ssid.txt";
 const char *passwordPath = "/password.txt";
@@ -24,7 +30,9 @@ String DATA_SSID;
 String serial_data_in;
 boolean isResponseDestinationCorrect = false;
 boolean isConnectionReady = false;
-boolean isNetworkReady = false;
+boolean isNetworkSetupReady = false;
+boolean isAuthServiceAvailable = false;
+boolean isWaitingForAuthService = false;
 boolean waitingForNetworkCredential;
 
 // Class Instance
@@ -98,7 +106,13 @@ void setup() {
   initSPIFFS();
 
   pinMode(LED, OUTPUT);
+  pinMode(LED_AUTH, OUTPUT);
+  pinMode(LED_TX, OUTPUT);
+  pinMode(LED_RX, OUTPUT);
   digitalWrite(LED, LOW);
+  digitalWrite(LED_AUTH, LOW);
+  digitalWrite(LED_TX, LOW);
+  digitalWrite(LED_RX, LOW);
 
   Serial.println("Try To Reading SPIFFS");
   DATA_SSID = readFile(SPIFFS, ssidPath);
@@ -136,7 +150,8 @@ void setup() {
 
       if (doc["type"] == "networksetup") {
         waitingForNetworkCredential = false;
-        isNetworkReady = true;
+        isNetworkSetupReady = true;
+        isAuthServiceAvailable = true;
         String serialSSID = doc["SSID"];
         String serialPASSWORD = doc["PASSWORD"];
         String serialGATEWAY = doc["GATEWAY"];
@@ -152,14 +167,15 @@ void setup() {
 
   // Ubah Status Menjadi Network Ready
   if (meshStatus() == true) {
-    isNetworkReady = true;
+    isNetworkSetupReady = true;
   }
 
-  if (isNetworkReady) {
+  if (isNetworkSetupReady) {
     mesh.setDebugMsgTypes(ERROR | STARTUP);
     mesh.init(DATA_SSID, DATA_PASSWORD, &userScheduler, MESH_PORT);
     mesh.setName(GATEWAY_FULL_NAME);
     isConnectionReady = true;
+    isAuthServiceAvailable = true;
 
     mesh.onReceive([](String &from, String &msg) {
       // Serial.printf("[i]: Receiving Request From Node: %s. %s\n",
@@ -167,6 +183,7 @@ void setup() {
       //               msg.c_str());
       // Pastikan Data Yang Diterima Memang Ditujukan Untuk Node Ini, Ubah Data
       // menjadi JSON Terlebih dahulu
+      digitalWrite(LED_RX, HIGH);
       StaticJsonDocument<256> doc;
       DeserializationError error = deserializeJson(doc, msg.c_str());
       if (error) {
@@ -212,34 +229,79 @@ void setup() {
         mesh.sendSingle(source, payload);
         Serial.printf("__CONNECTION_PING: %s. %s\n", from.c_str(), msg.c_str());
       }
+      digitalWrite(LED_RX, LOW);
     });
 
     mesh.onChangedConnections(
         []() { Serial.printf(" [M]: Changed Connection\n"); });
   }
+
+  authCheckTime = millis();
 }
 
 void loop() {
   if (isConnectionReady) {
     mesh.update(); // Updateing Network
 
+    // INFO: GATEWAY RESPONSE DATA HANDLER
     // Waiting Gateway Send Data
     if (Serial.available() > 0) {
       serial_data_in = Serial.readStringUntil('\n');
       // Change String To JSON
       StaticJsonDocument<200> doc;
       DeserializationError error = deserializeJson(doc, serial_data_in);
+      String type = doc["type"];
       // Test if parsing succeeds.
       if (error) {
         Serial.println("Failed to deserializeJson");
         return;
       }
-      if (doc["type"] == "auth") {
-        digitalWrite(LED, HIGH);
+
+      if (type == "auth") {
+        digitalWrite(LED_TX, HIGH);
         String NEW_NODE_DESTINATION = doc["destination"];
         mesh.sendSingle(NEW_NODE_DESTINATION, serial_data_in);
-        digitalWrite(LED, LOW);
+        digitalWrite(LED_TX, LOW);
       }
+      // INFO: Check Auth Service Availibilty
+      if (type == "service") {
+        // Jika gateway memberi response
+        if (isWaitingForAuthService && millis() - authRTOTime < RTO_LIMIT) {
+          isAuthServiceAvailable = true;
+          isWaitingForAuthService = false;
+        }
+        // Jika tidak ada response dari gateway
+        if (isWaitingForAuthService && millis() - authRTOTime > RTO_LIMIT) {
+          isAuthServiceAvailable = false;
+          isWaitingForAuthService = false;
+        }
+      }
+    }
+
+    // INFO: AUTH LED HANDLER
+    // Turn On LED when Auth Service Available
+    if (isAuthServiceAvailable) {
+      digitalWrite(LED_AUTH, HIGH);
+    }
+    // Turn Off LED when Auth Service Available
+    if (!isAuthServiceAvailable) {
+      digitalWrite(LED_AUTH, LOW);
+    }
+
+    // INFO: Check Auth Service Availibilty
+    // Kirim data ke gateway
+    if (millis() - authCheckTime > AUTH_INTERVAL) {
+      Serial.println("__CHECK_AUTH_SERVICE");
+      isWaitingForAuthService = true;
+      authCheckTime = millis(); // set new time
+      authRTOTime = millis();   // set rto time
+    }
+
+    // Jika tidak ada response dari gateway
+    if (isWaitingForAuthService && millis() - authRTOTime > RTO_LIMIT) {
+      isAuthServiceAvailable = false;
+      isWaitingForAuthService = false;
+      Serial.println("[x]: AUTH SERVICE NOT AVAILABLE");
     }
   }
 }
