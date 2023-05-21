@@ -15,9 +15,9 @@ unsigned long authRTOTime = 0;
 const int requestCredentialTimeInterval = 5000;
 const int RTO_LIMIT = 8000;
 const long AUTH_INTERVAL = 30000; // 30s
-const short LED_AUTH = 15;
-const short LED_TX = 16;
-const short LED_RX = 17;
+const byte LED_AUTH = 15;
+const byte LED_TX = 16;
+const byte LED_RX = 17;
 // File paths to save input values permanentlys
 const char *ssidPath = "/ssid.txt";
 const char *passwordPath = "/password.txt";
@@ -250,12 +250,16 @@ void loop() {
       // Change String To JSON
       StaticJsonDocument<200> doc;
       DeserializationError error = deserializeJson(doc, serial_data_in);
-      String type = doc["type"];
+
       // Test if parsing succeeds.
       if (error) {
         Serial.println("Failed to deserializeJson");
+        Serial.println("Attempting Increase doc size");
+        StaticJsonDocument<1024> doc;
+        DeserializationError error = deserializeJson(doc, serial_data_in);
         return;
       }
+      String type = doc["type"];
 
       if (type == "auth") {
         digitalWrite(LED_TX, HIGH);
