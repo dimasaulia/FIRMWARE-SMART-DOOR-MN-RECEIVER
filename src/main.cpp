@@ -15,9 +15,11 @@ unsigned long authRTOTime = 0;
 const int requestCredentialTimeInterval = 5000;
 const int RTO_LIMIT = 8000;
 const long AUTH_INTERVAL = 30000; // 30s
-const byte LED_AUTH = 15;
-const byte LED_TX = 16;
-const byte LED_RX = 17;
+const byte LED_AUTH = 17;
+const byte LED_TX = 19;
+const byte LED_RX = 21;
+const byte BUTTON_RESET = 15;
+const byte BUTTON_RESTART = 4;
 // File paths to save input values permanentlys
 const char *ssidPath = "/ssid.txt";
 const char *passwordPath = "/password.txt";
@@ -109,6 +111,8 @@ void setup() {
   pinMode(LED_AUTH, OUTPUT);
   pinMode(LED_TX, OUTPUT);
   pinMode(LED_RX, OUTPUT);
+  pinMode(BUTTON_RESET, INPUT);
+  pinMode(BUTTON_RESTART, INPUT);
   digitalWrite(LED, LOW);
   digitalWrite(LED_AUTH, LOW);
   digitalWrite(LED_TX, LOW);
@@ -240,6 +244,16 @@ void setup() {
 }
 
 void loop() {
+  if (digitalRead(BUTTON_RESTART) == HIGH) {
+    Serial.println("RESTARTING ESP");
+    ESP.restart();
+  }
+
+  if (digitalRead(BUTTON_RESET) == HIGH) {
+    Serial.println("RESET ESP, CLEAR ALL DATA");
+    meshReset();
+  }
+
   if (isConnectionReady) {
     mesh.update(); // Updateing Network
 
